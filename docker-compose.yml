@@ -1,0 +1,94 @@
+# Nom de projet explicite : le dossier s'appelle "backend" et entrerait sinon en
+# collision avec d'autres projets containerisés portant le meme nom de dossier.
+name: cm_medical
+
+services:
+  # Application PHP
+  app:
+    build:
+      context: ./docker/php
+      dockerfile: Dockerfile
+    container_name: cm_medical_app
+    restart: unless-stopped
+    working_dir: /var/www
+    volumes:
+      - ./:/var/www
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/custom.ini
+    networks:
+      - cm_medical_network
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # Serveur web Nginx (seul port exposé sur l'hote avec phpMyAdmin)
+  nginx:
+    image: nginx:alpine
+    container_name: cm_medical_nginx
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8092}:80"
+    volumes:
+      - ./:/var/www
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - cm_medical_network
+    depends_on:
+      - app
+
+  # Base de données MySQL (non exposée sur l'hote : accès via le réseau compose ou phpMyAdmin)
+  mysql:
+    image: mysql:8.0
+    container_name: cm_medical_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-cm_medical}
+      MYSQL_USER: ${DB_USERNAME:-laravel}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-secret}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:-rootsecret}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - cm_medical_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_ROOT_PASSWORD:-rootsecret}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # phpMyAdmin
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: cm_medical_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: mysql
+      PMA_PORT: 3306
+      UPLOAD_LIMIT: 100M
+    ports:
+      - "${PMA_PORT:-8093}:80"
+    networks:
+      - cm_medical_network
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  # Cache Redis (non exposé sur l'hote)
+  redis:
+    image: redis:alpine
+    container_name: cm_medical_redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - cm_medical_network
+
+networks:
+  cm_medical_network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  redis_data:
