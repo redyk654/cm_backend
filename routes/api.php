@@ -111,6 +111,8 @@ Route::middleware('auth:sanctum')->group(function () {
         ->middleware('permission:medical_report.view');
     Route::put('visits/{visit}/medical-report', [MedicalReportController::class, 'update'])
         ->middleware('permission:medical_report.update');
+    Route::get('visits/{visit}/medical-report/download', [MedicalReportController::class, 'download'])
+        ->middleware('permission:medical_report.view');
     Route::post('visits/{visit}/medical-report/validate', [MedicalReportController::class, 'validateReport'])
         ->middleware('permission:medical_report.validate');
 

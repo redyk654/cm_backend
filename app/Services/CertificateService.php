@@ -12,6 +12,7 @@ use App\Models\Visit;
 use App\Repositories\AptitudeAssessmentRepository;
 use App\Repositories\CertificateRepository;
 use App\Repositories\MedicalReportRepository;
+use App\Repositories\VisitRepository;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -31,6 +32,7 @@ class CertificateService
         private readonly CertificateRepository $repository,
         private readonly MedicalReportRepository $reportRepository,
         private readonly AptitudeAssessmentRepository $assessmentRepository,
+        private readonly VisitRepository $visitRepository,
         private readonly AuditLogger $auditLogger,
     ) {}
 
@@ -64,6 +66,12 @@ class CertificateService
 
         $visit->load(['patient', 'visitType']);
 
+        // « Date de la précédente visite périodique » : dernière visite périodique
+        // validée du patient, antérieure à la visite courante.
+        $datePrecedentePeriodique = $this->visitRepository
+            ->previousPeriodicVisit($visit->patient, $visit->date_visite->toDateString())
+            ?->date_visite?->toDateString();
+
         $existing = $this->repository->findByVisit($visit->id);
 
         $reference = $existing?->reference ?? sprintf(
@@ -80,8 +88,11 @@ class CertificateService
             'patient_nom' => $visit->patient->nom,
             'patient_prenom' => $visit->patient->prenom,
             'patient_date_naissance' => $visit->patient->date_naissance?->toDateString(),
+            'employeur' => $visit->employeur,
             'poste' => $visit->poste,
             'type_visite_label' => $visit->visitType->label,
+            'type_visite_code' => $visit->visitType->code,
+            'date_precedente_visite_periodique' => $datePrecedentePeriodique,
             'decision_label' => $assessment->decision_label,
             'restriction' => $assessment->restriction,
             'recommandations' => $assessment->recommandations,
@@ -89,7 +100,7 @@ class CertificateService
             'date_examen' => $dateExamen->toDateString(),
             'date_expiration' => $dateExpiration->toDateString(),
             'medecin_nom' => $signataire->full_name,
-            'lieu' => $existing?->lieu ?? 'Douala',
+            'lieu' => $existing?->lieu ?? (string) config('centre.lieu_etablissement', 'Douala'),
         ];
 
         return DB::transaction(function () use ($visit, $existing, $reference, $snapshot, $user): Certificate {
@@ -97,6 +108,7 @@ class CertificateService
                 'c' => (object) $snapshot,
                 'reference' => $reference,
                 'genere_le' => now(),
+                'centre' => config('centre'),
             ])->setPaper('a4');
 
             $path = "certificates/{$reference}.pdf";

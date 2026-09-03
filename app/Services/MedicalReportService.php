@@ -10,6 +10,8 @@ use App\Models\User;
 use App\Models\Visit;
 use App\Repositories\MedicalReportRepository;
 use App\Repositories\VisitRepository;
+use Barryvdh\DomPDF\Facade\Pdf;
+use Barryvdh\DomPDF\PDF as DomPDF;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -30,6 +32,36 @@ class MedicalReportService
     public function getOrCreateForVisit(Visit $visit): MedicalReport
     {
         return $this->repository->firstOrCreateForVisit($visit->id);
+    }
+
+    /**
+     * Produit le PDF du rapport médical (fac-similé du formulaire papier du centre).
+     *
+     * Le rapport doit être validé : un brouillon n'est pas un document officiel.
+     * Rendu à la volée (le rapport validé est immuable), sans stockage ni référence.
+     */
+    public function pdfForVisit(Visit $visit): DomPDF
+    {
+        $report = $this->repository->firstOrCreateForVisit($visit->id);
+
+        if ($report->statut !== MedicalReport::STATUT_VALIDE) {
+            throw new \DomainException('Le rapport médical doit être validé avant de produire le PDF.');
+        }
+
+        $visit->load(['patient', 'visitType']);
+        $report->load(['medecinSignataire:id,nom,prenom', 'validatedBy:id,nom,prenom']);
+
+        $signataire = $report->medecinSignataire ?? $report->validatedBy;
+
+        return Pdf::loadView('medical-reports.rapport', [
+            'r' => $report,
+            'visit' => $visit,
+            'patient' => $visit->patient,
+            'typeVisiteLabel' => $visit->visitType->label,
+            'medecinNom' => $signataire?->full_name ?? '',
+            'centre' => config('centre'),
+            'genereLe' => now(),
+        ])->setPaper('a4');
     }
 
     /**

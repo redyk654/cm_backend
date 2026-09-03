@@ -26,6 +26,7 @@ class Certificate extends BaseModel
             'patient_date_naissance' => 'date:Y-m-d',
             'date_examen' => 'date:Y-m-d',
             'date_expiration' => 'date:Y-m-d',
+            'date_precedente_visite_periodique' => 'date:Y-m-d',
             'duree_validite_mois' => 'integer',
             'generated_at' => 'datetime',
         ];
